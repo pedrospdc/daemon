@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-    service, err := daemon.New("name", "description")
+    service, err := daemon.New("name", "description", []string{""})
     if err != nil {
         log.Fatal("Error: ", err)
     }
@@ -65,12 +65,12 @@ var dependencies = []string{"dummy.service"}
 var stdlog, errlog *log.Logger
 
 // Service has embedded daemon
-type Service struct {
+type OurService struct {
     daemon.Daemon
 }
 
 // Manage by daemon commands or run the daemon
-func (service *Service) Manage() (string, error) {
+func (service *OurService) Manage() (string, error) {
 
     usage := "Usage: myservice install | remove | start | stop | status"
 
@@ -160,12 +160,12 @@ func init() {
 }
 
 func main() {
-    srv, err := daemon.New(name, description, dependencies...)
+    srv, err := daemon.New(name, description, []string{}, dependencies...)
     if err != nil {
         errlog.Println("Error: ", err)
         os.Exit(1)
     }
-    service := &Service{srv}
+    service := &OurService{srv}
     status, err := service.Manage()
     if err != nil {
         errlog.Println(status, "\nError: ", err)
