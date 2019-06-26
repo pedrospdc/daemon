@@ -178,6 +178,9 @@ type Daemon interface {
 
 	// Run - run executable service
 	Run(e Executable) (string, error)
+
+	// SetArguments - set ServiceProperties.arguments
+	SetArguments(args []string)
 }
 
 type ServiceProperties struct {
@@ -185,6 +188,10 @@ type ServiceProperties struct {
 	description  string
 	arguments    []string
 	dependencies []string
+}
+
+func (properties *ServiceProperties) SetArguments (args []string) {
+	properties.arguments = args
 }
 
 // Executable interface defines controlling methods of executable service
