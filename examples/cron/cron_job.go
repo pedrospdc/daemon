@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/robfig/cron"
-	"github.com/takama/daemon"
+	"github.com/pedrospdc/daemon"
 )
 
 const (

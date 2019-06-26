@@ -16,7 +16,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/takama/daemon"
+    "github.com/pedrospdc/daemon"
 )
 
 func main() {
@@ -46,7 +46,7 @@ import (
     "os/signal"
     "syscall"
 
-    "github.com/takama/daemon"
+    "github.com/pedrospdc/daemon"
 )
 
 const (
@@ -247,4 +247,4 @@ Thank you for your understanding!
 
 ## License
 
-[MIT Public License](https://github.com/takama/daemon/blob/master/LICENSE)
+[MIT Public License](https://github.com/pedrospdc/daemon/blob/master/LICENSE)
