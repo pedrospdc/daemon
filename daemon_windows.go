@@ -22,22 +22,22 @@ type WindowsService struct {
 }
 
 // GetTemplate - gets service config template
-func (svc *WindowsService) GetTemplate() string {
+func (windowsSvc *WindowsService) GetTemplate() string {
 	return ""
 }
 
 // SetTemplate - sets service config template
-func (svc *WindowsService) SetTemplate(tplStr string) error {
+func (windowsSvc *WindowsService) SetTemplate(tplStr string) error {
 	return errors.New(fmt.Sprintf("templating is not supported for windows"))
 }
 
 func newDaemon(name, description string, arguments []string, dependencies []string) (Daemon, error) {
-	return &WindowsService{name: name, description: description, arguments: arguments, dependencies: dependencies}, nil
+	return &WindowsService{ServiceProperties{name: name, description: description, arguments: arguments, dependencies: dependencies}}, nil
 }
 
 // Install the service
-func (svc *WindowsService) Install(args ...string) (string, error) {
-	installAction := "Install " + svc.description + ":"
+func (windowsSvc *WindowsService) Install(args ...string) (string, error) {
+	installAction := "Install " + windowsSvc.description + ":"
 
 	execp, err := execPath()
 
@@ -51,17 +51,17 @@ func (svc *WindowsService) Install(args ...string) (string, error) {
 	}
 	defer m.Disconnect()
 
-	s, err := m.OpenService(svc.name)
+	s, err := m.OpenService(windowsSvc.name)
 	if err == nil {
 		s.Close()
 		return installAction + failed, ErrAlreadyRunning
 	}
 
-	s, err = m.CreateService(svc.name, execp, mgr.Config{
-		DisplayName:  svc.name,
-		Description:  svc.description,
+	s, err = m.CreateService(windowsSvc.name, execp, mgr.Config{
+		DisplayName:  windowsSvc.name,
+		Description:  windowsSvc.description,
 		StartType:    mgr.StartAutomatic,
-		Dependencies: svc.dependencies,
+		Dependencies: windowsSvc.dependencies,
 	}, args...)
 	if err != nil {
 		return installAction + failed, err
@@ -96,15 +96,15 @@ func (svc *WindowsService) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (svc *WindowsService) Remove() (string, error) {
-	removeAction := "Removing " + svc.description + ":"
+func (windowsSvc *WindowsService) Remove() (string, error) {
+	removeAction := "Removing " + windowsSvc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return removeAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(svc.name)
+	s, err := m.OpenService(windowsSvc.name)
 	if err != nil {
 		return removeAction + failed, getWindowsError(err)
 	}
@@ -118,15 +118,15 @@ func (svc *WindowsService) Remove() (string, error) {
 }
 
 // Start the service
-func (svc *WindowsService) Start() (string, error) {
-	startAction := "Starting " + svc.description + ":"
+func (windowsSvc *WindowsService) Start() (string, error) {
+	startAction := "Starting " + windowsSvc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return startAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(svc.name)
+	s, err := m.OpenService(windowsSvc.name)
 	if err != nil {
 		return startAction + failed, getWindowsError(err)
 	}
@@ -139,15 +139,15 @@ func (svc *WindowsService) Start() (string, error) {
 }
 
 // Stop the service
-func (svc *WindowsService) Stop() (string, error) {
-	stopAction := "Stopping " + svc.description + ":"
+func (windowsSvc *WindowsService) Stop() (string, error) {
+	stopAction := "Stopping " + windowsSvc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return stopAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(svc.name)
+	s, err := m.OpenService(windowsSvc.name)
 	if err != nil {
 		return stopAction + failed, getWindowsError(err)
 	}
@@ -206,13 +206,13 @@ func getStopTimeout() time.Duration {
 }
 
 // Status - Get service status
-func (svc *WindowsService) Status() (string, error) {
+func (windowsSvc *WindowsService) Status() (string, error) {
 	m, err := mgr.Connect()
 	if err != nil {
 		return "Getting status:" + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(svc.name)
+	s, err := m.OpenService(windowsSvc.name)
 	if err != nil {
 		return "Getting status:" + failed, getWindowsError(err)
 	}
@@ -322,17 +322,17 @@ loop:
 	return
 }
 
-func (svc *WindowsService) Run(e Executable) (string, error) {
-	runAction := "Running " + svc.description + ":"
+func (windowsSvc *WindowsService) Run(e Executable) (string, error) {
+	runAction := "Running " + windowsSvc.description + ":"
 
 	interactive, err := svc.IsAnInteractiveSession()
 	if err != nil {
 		return runAction + failed, getWindowsError(err)
 	}
 	if !interactive {
-		// service called from svc service manager
-		// use API provided by golang.org/x/sys/svc
-		err = svc.Run(svc.name, &serviceHandler{
+		// service called from windowsSvc service manager
+		// use API provided by golang.org/x/sys/windowsSvc
+		err = svc.Run(windowsSvc.name, &serviceHandler{
 			executable: e,
 		})
 		if err != nil {
