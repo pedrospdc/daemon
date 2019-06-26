@@ -1,8 +1,9 @@
 # Go Daemon
 
-A daemon package for use with Go (golang) services with no dependencies
+A daemon package for use with Go (golang) services with no dependencies. 
+Fork of Takama's [daemon library](https://github.com/takama/daemon) as it's not maintained anymore.
 
-[![GoDoc](https://godoc.org/github.com/takama/daemon?status.svg)](https://godoc.org/github.com/takama/daemon)
+[![GoDoc](https://godoc.org/github.com/pedrospdc/daemon?status.svg)](https://godoc.org/github.com/pedrospdc/daemon)
 
 ## Examples
 

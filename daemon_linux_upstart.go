@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 package daemon
 
 import (
@@ -12,22 +8,38 @@ import (
 	"text/template"
 )
 
-// upstartRecord - standard record (struct) for linux upstart version of daemon package
-type upstartRecord struct {
-	name         string
-	description  string
-	dependencies []string
+// UpstartService - standard record (struct) for linux upstart version of daemon package
+type UpstartService struct {
+	ServiceProperties
+}
+
+// Run - Run service
+func (svc *UpstartService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
+	e.Run()
+	return runAction + " completed.", nil
+}
+
+// GetTemplate - gets service config template
+func (svc *UpstartService) GetTemplate() string {
+	return upstatConfig
+}
+
+// SetTemplate - sets service config template
+func (svc *UpstartService) SetTemplate(tplStr string) error {
+	upstatConfig = tplStr
+	return nil
 }
 
 // Standard service path for systemV daemons
-func (linux *upstartRecord) servicePath() string {
-	return "/etc/init/" + linux.name + ".conf"
+func (svc *UpstartService) servicePath() string {
+	return "/etc/init/" + svc.name + ".conf"
 }
 
 // Is a service installed
-func (linux *upstartRecord) isInstalled() bool {
+func (svc *UpstartService) isInstalled() bool {
 
-	if _, err := os.Stat(linux.servicePath()); err == nil {
+	if _, err := os.Stat(svc.servicePath()); err == nil {
 		return true
 	}
 
@@ -35,10 +47,10 @@ func (linux *upstartRecord) isInstalled() bool {
 }
 
 // Check service is running
-func (linux *upstartRecord) checkRunning() (string, bool) {
-	output, err := exec.Command("status", linux.name).Output()
+func (svc *UpstartService) checkRunning() (string, bool) {
+	output, err := exec.Command("status", svc.name).Output()
 	if err == nil {
-		if matched, err := regexp.MatchString(linux.name+" start/running", string(output)); err == nil && matched {
+		if matched, err := regexp.MatchString(svc.name+" start/running", string(output)); err == nil && matched {
 			reg := regexp.MustCompile("process ([0-9]+)")
 			data := reg.FindStringSubmatch(string(output))
 			if len(data) > 1 {
@@ -52,16 +64,16 @@ func (linux *upstartRecord) checkRunning() (string, bool) {
 }
 
 // Install the service
-func (linux *upstartRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + linux.description + ":"
+func (svc *UpstartService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return installAction + failed, err
 	}
 
-	srvPath := linux.servicePath()
+	srvPath := svc.servicePath()
 
-	if linux.isInstalled() {
+	if svc.isInstalled() {
 		return installAction + failed, ErrAlreadyInstalled
 	}
 
@@ -71,7 +83,7 @@ func (linux *upstartRecord) Install(args ...string) (string, error) {
 	}
 	defer file.Close()
 
-	execPatch, err := executablePath(linux.name)
+	execPatch, err := executablePath(&svc.ServiceProperties)
 	if err != nil {
 		return installAction + failed, err
 	}
@@ -85,7 +97,7 @@ func (linux *upstartRecord) Install(args ...string) (string, error) {
 		file,
 		&struct {
 			Name, Description, Path, Args string
-		}{linux.name, linux.description, execPatch, strings.Join(args, " ")},
+		}{svc.name, svc.description, execPatch, strings.Join(args, " ")},
 	); err != nil {
 		return installAction + failed, err
 	}
@@ -98,18 +110,18 @@ func (linux *upstartRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (linux *upstartRecord) Remove() (string, error) {
-	removeAction := "Removing " + linux.description + ":"
+func (svc *UpstartService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return removeAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return removeAction + failed, ErrNotInstalled
 	}
 
-	if err := os.Remove(linux.servicePath()); err != nil {
+	if err := os.Remove(svc.servicePath()); err != nil {
 		return removeAction + failed, err
 	}
 
@@ -117,22 +129,22 @@ func (linux *upstartRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (linux *upstartRecord) Start() (string, error) {
-	startAction := "Starting " + linux.description + ":"
+func (svc *UpstartService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return startAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return startAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); ok {
+	if _, ok := svc.checkRunning(); ok {
 		return startAction + failed, ErrAlreadyRunning
 	}
 
-	if err := exec.Command("start", linux.name).Run(); err != nil {
+	if err := exec.Command("start", svc.name).Run(); err != nil {
 		return startAction + failed, err
 	}
 
@@ -140,22 +152,22 @@ func (linux *upstartRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (linux *upstartRecord) Stop() (string, error) {
-	stopAction := "Stopping " + linux.description + ":"
+func (svc *UpstartService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return stopAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return stopAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); !ok {
+	if _, ok := svc.checkRunning(); !ok {
 		return stopAction + failed, ErrAlreadyStopped
 	}
 
-	if err := exec.Command("stop", linux.name).Run(); err != nil {
+	if err := exec.Command("stop", svc.name).Run(); err != nil {
 		return stopAction + failed, err
 	}
 
@@ -163,37 +175,19 @@ func (linux *upstartRecord) Stop() (string, error) {
 }
 
 // Status - Get service status
-func (linux *upstartRecord) Status() (string, error) {
+func (svc *UpstartService) Status() (string, error) {
 
 	if ok, err := checkPrivileges(); !ok {
 		return "", err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return "Status could not defined", ErrNotInstalled
 	}
 
-	statusAction, _ := linux.checkRunning()
+	statusAction, _ := svc.checkRunning()
 
 	return statusAction, nil
-}
-
-// Run - Run service
-func (linux *upstartRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + linux.description + ":"
-	e.Run()
-	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *upstartRecord) GetTemplate() string {
-	return upstatConfig
-}
-
-// SetTemplate - sets service config template
-func (linux *upstartRecord) SetTemplate(tplStr string) error {
-	upstatConfig = tplStr
-	return nil
 }
 
 var upstatConfig = `# {{.Name}} {{.Description}}

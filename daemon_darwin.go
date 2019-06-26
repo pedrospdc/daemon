@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 // Package daemon darwin (mac os x) version
 package daemon
 
@@ -13,27 +9,33 @@ import (
 	"text/template"
 )
 
-// darwinRecord - standard record (struct) for darwin version of daemon package
-type darwinRecord struct {
-	name         string
-	description  string
-	dependencies []string
+type DarwinService struct {
+	ServiceProperties
+}
+
+// GetTemplate - gets service config template
+func (svc *DarwinService) GetTemplate() string {
+	return propertyList
+}
+
+// SetTemplate - sets service config template
+func (svc *DarwinService) SetTemplate(tplStr string) error {
+	propertyList = tplStr
+	return nil
 }
 
 func newDaemon(name, description string, dependencies []string) (Daemon, error) {
-
-	return &darwinRecord{name, description, dependencies}, nil
+	return &Service{name, description, dependencies}, nil
 }
 
 // Standard service path for system daemons
-func (darwin *darwinRecord) servicePath() string {
-	return "/Library/LaunchDaemons/" + darwin.name + ".plist"
+func (svc *DarwinService) servicePath() string {
+	return "/Library/LaunchDaemons/" + svc.name + ".plist"
 }
 
 // Is a service installed
-func (darwin *darwinRecord) isInstalled() bool {
-
-	if _, err := os.Stat(darwin.servicePath()); err == nil {
+func (svc *DarwinService) isInstalled() bool {
+	if _, err := os.Stat(svc.servicePath()); err == nil {
 		return true
 	}
 
@@ -46,10 +48,10 @@ func execPath() (string, error) {
 }
 
 // Check service is running
-func (darwin *darwinRecord) checkRunning() (string, bool) {
-	output, err := exec.Command("launchctl", "list", darwin.name).Output()
+func (svc *DarwinService) checkRunning() (string, bool) {
+	output, err := exec.Command("launchctl", "list", svc.name).Output()
 	if err == nil {
-		if matched, err := regexp.MatchString(darwin.name, string(output)); err == nil && matched {
+		if matched, err := regexp.MatchString(svc.name, string(output)); err == nil && matched {
 			reg := regexp.MustCompile("PID\" = ([0-9]+);")
 			data := reg.FindStringSubmatch(string(output))
 			if len(data) > 1 {
@@ -63,16 +65,16 @@ func (darwin *darwinRecord) checkRunning() (string, bool) {
 }
 
 // Install the service
-func (darwin *darwinRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + darwin.description + ":"
+func (svc *DarwinService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return installAction + failed, err
 	}
 
-	srvPath := darwin.servicePath()
+	srvPath := svc.servicePath()
 
-	if darwin.isInstalled() {
+	if svc.isInstalled() {
 		return installAction + failed, ErrAlreadyInstalled
 	}
 
@@ -82,7 +84,7 @@ func (darwin *darwinRecord) Install(args ...string) (string, error) {
 	}
 	defer file.Close()
 
-	execPatch, err := executablePath(darwin.name)
+	execPatch, err := executablePath(&svc.ServiceProperties)
 	if err != nil {
 		return installAction + failed, err
 	}
@@ -97,7 +99,7 @@ func (darwin *darwinRecord) Install(args ...string) (string, error) {
 		&struct {
 			Name, Path string
 			Args       []string
-		}{darwin.name, execPatch, args},
+		}{svc.name, execPatch, args},
 	); err != nil {
 		return installAction + failed, err
 	}
@@ -106,18 +108,18 @@ func (darwin *darwinRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (darwin *darwinRecord) Remove() (string, error) {
-	removeAction := "Removing " + darwin.description + ":"
+func (svc *DarwinService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return removeAction + failed, err
 	}
 
-	if !darwin.isInstalled() {
+	if !svc.isInstalled() {
 		return removeAction + failed, ErrNotInstalled
 	}
 
-	if err := os.Remove(darwin.servicePath()); err != nil {
+	if err := os.Remove(svc.servicePath()); err != nil {
 		return removeAction + failed, err
 	}
 
@@ -125,22 +127,22 @@ func (darwin *darwinRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (darwin *darwinRecord) Start() (string, error) {
-	startAction := "Starting " + darwin.description + ":"
+func (svc *DarwinService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return startAction + failed, err
 	}
 
-	if !darwin.isInstalled() {
+	if !svc.isInstalled() {
 		return startAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := darwin.checkRunning(); ok {
+	if _, ok := svc.checkRunning(); ok {
 		return startAction + failed, ErrAlreadyRunning
 	}
 
-	if err := exec.Command("launchctl", "load", darwin.servicePath()).Run(); err != nil {
+	if err := exec.Command("launchctl", "load", svc.servicePath()).Run(); err != nil {
 		return startAction + failed, err
 	}
 
@@ -148,22 +150,22 @@ func (darwin *darwinRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (darwin *darwinRecord) Stop() (string, error) {
-	stopAction := "Stopping " + darwin.description + ":"
+func (svc *DarwinService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return stopAction + failed, err
 	}
 
-	if !darwin.isInstalled() {
+	if !svc.isInstalled() {
 		return stopAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := darwin.checkRunning(); !ok {
+	if _, ok := svc.checkRunning(); !ok {
 		return stopAction + failed, ErrAlreadyStopped
 	}
 
-	if err := exec.Command("launchctl", "unload", darwin.servicePath()).Run(); err != nil {
+	if err := exec.Command("launchctl", "unload", svc.servicePath()).Run(); err != nil {
 		return stopAction + failed, err
 	}
 
@@ -171,37 +173,25 @@ func (darwin *darwinRecord) Stop() (string, error) {
 }
 
 // Status - Get service status
-func (darwin *darwinRecord) Status() (string, error) {
-
+func (svc *DarwinService) Status() (string, error) {
 	if ok, err := checkPrivileges(); !ok {
 		return "", err
 	}
 
-	if !darwin.isInstalled() {
+	if !svc.isInstalled() {
 		return "Status could not defined", ErrNotInstalled
 	}
 
-	statusAction, _ := darwin.checkRunning()
+	statusAction, _ := svc.checkRunning()
 
 	return statusAction, nil
 }
 
 // Run - Run service
-func (darwin *darwinRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + darwin.description + ":"
+func (svc *DarwinService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
 	e.Run()
 	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *darwinRecord) GetTemplate() string {
-	return propertyList
-}
-
-// SetTemplate - sets service config template
-func (linux *darwinRecord) SetTemplate(tplStr string) error {
-	propertyList = tplStr
-	return nil
 }
 
 var propertyList = `<?xml version="1.0" encoding="UTF-8"?>

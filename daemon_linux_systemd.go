@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 package daemon
 
 import (
@@ -12,22 +8,30 @@ import (
 	"text/template"
 )
 
-// systemDRecord - standard record (struct) for linux systemD version of daemon package
-type systemDRecord struct {
-	name         string
-	description  string
-	dependencies []string
+type SystemdService struct {
+	ServiceProperties
+}
+
+// GetTemplate - gets service config template
+func (svc *SystemdService) GetTemplate() string {
+	return systemDConfig
+}
+
+// SetTemplate - sets service config template
+func (svc *SystemdService) SetTemplate(tplStr string) error {
+	systemDConfig = tplStr
+	return nil
 }
 
 // Standard service path for systemD daemons
-func (linux *systemDRecord) servicePath() string {
-	return "/etc/systemd/system/" + linux.name + ".service"
+func (svc *SystemdService) servicePath() string {
+	return "/etc/systemd/system/" + svc.name + ".service"
 }
 
 // Is a service installed
-func (linux *systemDRecord) isInstalled() bool {
+func (svc *SystemdService) isInstalled() bool {
 
-	if _, err := os.Stat(linux.servicePath()); err == nil {
+	if _, err := os.Stat(svc.servicePath()); err == nil {
 		return true
 	}
 
@@ -35,8 +39,8 @@ func (linux *systemDRecord) isInstalled() bool {
 }
 
 // Check service is running
-func (linux *systemDRecord) checkRunning() (string, bool) {
-	output, err := exec.Command("systemctl", "status", linux.name+".service").Output()
+func (svc *SystemdService) checkRunning() (string, bool) {
+	output, err := exec.Command("systemctl", "status", svc.name+".service").Output()
 	if err == nil {
 		if matched, err := regexp.MatchString("Active: active", string(output)); err == nil && matched {
 			reg := regexp.MustCompile("Main PID: ([0-9]+)")
@@ -52,16 +56,16 @@ func (linux *systemDRecord) checkRunning() (string, bool) {
 }
 
 // Install the service
-func (linux *systemDRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + linux.description + ":"
+func (svc *SystemdService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return installAction + failed, err
 	}
 
-	srvPath := linux.servicePath()
+	srvPath := svc.servicePath()
 
-	if linux.isInstalled() {
+	if svc.isInstalled() {
 		return installAction + failed, ErrAlreadyInstalled
 	}
 
@@ -71,7 +75,7 @@ func (linux *systemDRecord) Install(args ...string) (string, error) {
 	}
 	defer file.Close()
 
-	execPatch, err := executablePath(linux.name)
+	execPatch, err := executablePath(&svc.ServiceProperties)
 	if err != nil {
 		return installAction + failed, err
 	}
@@ -86,9 +90,9 @@ func (linux *systemDRecord) Install(args ...string) (string, error) {
 		&struct {
 			Name, Description, Dependencies, Path, Args string
 		}{
-			linux.name,
-			linux.description,
-			strings.Join(linux.dependencies, " "),
+			svc.name,
+			svc.description,
+			strings.Join(svc.dependencies, " "),
 			execPatch,
 			strings.Join(args, " "),
 		},
@@ -100,7 +104,7 @@ func (linux *systemDRecord) Install(args ...string) (string, error) {
 		return installAction + failed, err
 	}
 
-	if err := exec.Command("systemctl", "enable", linux.name+".service").Run(); err != nil {
+	if err := exec.Command("systemctl", "enable", svc.name+".service").Run(); err != nil {
 		return installAction + failed, err
 	}
 
@@ -108,22 +112,22 @@ func (linux *systemDRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (linux *systemDRecord) Remove() (string, error) {
-	removeAction := "Removing " + linux.description + ":"
+func (svc *SystemdService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return removeAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return removeAction + failed, ErrNotInstalled
 	}
 
-	if err := exec.Command("systemctl", "disable", linux.name+".service").Run(); err != nil {
+	if err := exec.Command("systemctl", "disable", svc.name+".service").Run(); err != nil {
 		return removeAction + failed, err
 	}
 
-	if err := os.Remove(linux.servicePath()); err != nil {
+	if err := os.Remove(svc.servicePath()); err != nil {
 		return removeAction + failed, err
 	}
 
@@ -131,22 +135,22 @@ func (linux *systemDRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (linux *systemDRecord) Start() (string, error) {
-	startAction := "Starting " + linux.description + ":"
+func (svc *SystemdService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return startAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return startAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); ok {
+	if _, ok := svc.checkRunning(); ok {
 		return startAction + failed, ErrAlreadyRunning
 	}
 
-	if err := exec.Command("systemctl", "start", linux.name+".service").Run(); err != nil {
+	if err := exec.Command("systemctl", "start", svc.name+".service").Run(); err != nil {
 		return startAction + failed, err
 	}
 
@@ -154,22 +158,22 @@ func (linux *systemDRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (linux *systemDRecord) Stop() (string, error) {
-	stopAction := "Stopping " + linux.description + ":"
+func (svc *SystemdService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return stopAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return stopAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); !ok {
+	if _, ok := svc.checkRunning(); !ok {
 		return stopAction + failed, ErrAlreadyStopped
 	}
 
-	if err := exec.Command("systemctl", "stop", linux.name+".service").Run(); err != nil {
+	if err := exec.Command("systemctl", "stop", svc.name+".service").Run(); err != nil {
 		return stopAction + failed, err
 	}
 
@@ -177,37 +181,26 @@ func (linux *systemDRecord) Stop() (string, error) {
 }
 
 // Status - Get service status
-func (linux *systemDRecord) Status() (string, error) {
+func (svc *SystemdService) Status() (string, error) {
 
 	if ok, err := checkPrivileges(); !ok {
 		return "", err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return "Status could not defined", ErrNotInstalled
 	}
 
-	statusAction, _ := linux.checkRunning()
+	statusAction, _ := svc.checkRunning()
 
 	return statusAction, nil
 }
 
 // Run - Run service
-func (linux *systemDRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + linux.description + ":"
+func (svc *SystemdService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
 	e.Run()
 	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *systemDRecord) GetTemplate() string {
-	return systemDConfig
-}
-
-// SetTemplate - sets service config template
-func (linux *systemDRecord) SetTemplate(tplStr string) error {
-	systemDConfig = tplStr
-	return nil
 }
 
 var systemDConfig = `[Unit]

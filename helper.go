@@ -1,13 +1,10 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 //+build go1.8
 
 package daemon
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -22,42 +19,53 @@ const (
 
 var (
 	// ErrUnsupportedSystem appears if try to use service on system which is not supported by this release
-	ErrUnsupportedSystem = errors.New("Unsupported system")
+	ErrUnsupportedSystem = errors.New("unsupported system")
 
 	// ErrRootPrivileges appears if run installation or deleting the service without root privileges
-	ErrRootPrivileges = errors.New("You must have root user privileges. Possibly using 'sudo' command should help")
+	ErrRootPrivileges = errors.New("you must have root user privileges. Possibly using 'sudo' command should help")
 
 	// ErrAlreadyInstalled appears if service already installed on the system
-	ErrAlreadyInstalled = errors.New("Service has already been installed")
+	ErrAlreadyInstalled = errors.New("service has already been installed")
 
 	// ErrNotInstalled appears if try to delete service which was not been installed
-	ErrNotInstalled = errors.New("Service is not installed")
+	ErrNotInstalled = errors.New("service is not installed")
 
 	// ErrAlreadyRunning appears if try to start already running service
-	ErrAlreadyRunning = errors.New("Service is already running")
+	ErrAlreadyRunning = errors.New("service is already running")
 
 	// ErrAlreadyStopped appears if try to stop already stopped service
-	ErrAlreadyStopped = errors.New("Service has already been stopped")
+	ErrAlreadyStopped = errors.New("service has already been stopped")
 )
 
-// ExecPath tries to get executable path
-func ExecPath() (string, error) {
-	return os.Executable()
-}
-
 // Lookup path for executable file
-func executablePath(name string) (string, error) {
-	if path, err := exec.LookPath(name); err == nil {
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
+func executablePath(properties *ServiceProperties) (string, error) {
+	var err error
+	var foundPath string
+	var path string
+
+	if path, err = exec.LookPath(properties.name); err == nil {
+		if _, err = os.Stat(path); err == nil {
+			foundPath = path
 		}
 	}
-	return os.Executable()
+
+	if foundPath == "" {
+		foundPath, err = os.Executable()
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	if foundPath != "" && len(properties.arguments) > 0 {
+		return fmt.Sprintf("%s %s", foundPath, strings.Join(properties.arguments, " ")), nil
+	}
+
+	return "", nil
 }
 
 // Check root rights to use system service
 func checkPrivileges() (bool, error) {
-
 	if output, err := exec.Command("id", "-g").Output(); err == nil {
 		if gid, parseErr := strconv.ParseUint(strings.TrimSpace(string(output)), 10, 32); parseErr == nil {
 			if gid == 0 {

@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 // Package daemon windows version
 package daemon
 
@@ -20,21 +16,28 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-// windowsRecord - standard record (struct) for windows version of daemon package
-type windowsRecord struct {
-	name         string
-	description  string
-	dependencies []string
+// WindowsService - standard record (struct) for windows version of daemon package
+type WindowsService struct {
+	ServiceProperties
 }
 
-func newDaemon(name, description string, dependencies []string) (Daemon, error) {
+// GetTemplate - gets service config template
+func (svc *WindowsService) GetTemplate() string {
+	return ""
+}
 
-	return &windowsRecord{name, description, dependencies}, nil
+// SetTemplate - sets service config template
+func (svc *WindowsService) SetTemplate(tplStr string) error {
+	return errors.New(fmt.Sprintf("templating is not supported for windows"))
+}
+
+func newDaemon(name, description string, arguments []string, dependencies []string) (Daemon, error) {
+	return &WindowsService{name: name, description: description, arguments: arguments, dependencies: dependencies}, nil
 }
 
 // Install the service
-func (windows *windowsRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + windows.description + ":"
+func (svc *WindowsService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	execp, err := execPath()
 
@@ -48,17 +51,17 @@ func (windows *windowsRecord) Install(args ...string) (string, error) {
 	}
 	defer m.Disconnect()
 
-	s, err := m.OpenService(windows.name)
+	s, err := m.OpenService(svc.name)
 	if err == nil {
 		s.Close()
 		return installAction + failed, ErrAlreadyRunning
 	}
 
-	s, err = m.CreateService(windows.name, execp, mgr.Config{
-		DisplayName:  windows.name,
-		Description:  windows.description,
+	s, err = m.CreateService(svc.name, execp, mgr.Config{
+		DisplayName:  svc.name,
+		Description:  svc.description,
 		StartType:    mgr.StartAutomatic,
-		Dependencies: windows.dependencies,
+		Dependencies: svc.dependencies,
 	}, args...)
 	if err != nil {
 		return installAction + failed, err
@@ -93,15 +96,15 @@ func (windows *windowsRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (windows *windowsRecord) Remove() (string, error) {
-	removeAction := "Removing " + windows.description + ":"
+func (svc *WindowsService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return removeAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(windows.name)
+	s, err := m.OpenService(svc.name)
 	if err != nil {
 		return removeAction + failed, getWindowsError(err)
 	}
@@ -115,15 +118,15 @@ func (windows *windowsRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (windows *windowsRecord) Start() (string, error) {
-	startAction := "Starting " + windows.description + ":"
+func (svc *WindowsService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return startAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(windows.name)
+	s, err := m.OpenService(svc.name)
 	if err != nil {
 		return startAction + failed, getWindowsError(err)
 	}
@@ -136,15 +139,15 @@ func (windows *windowsRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (windows *windowsRecord) Stop() (string, error) {
-	stopAction := "Stopping " + windows.description + ":"
+func (svc *WindowsService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	m, err := mgr.Connect()
 	if err != nil {
 		return stopAction + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(windows.name)
+	s, err := m.OpenService(svc.name)
 	if err != nil {
 		return stopAction + failed, getWindowsError(err)
 	}
@@ -203,13 +206,13 @@ func getStopTimeout() time.Duration {
 }
 
 // Status - Get service status
-func (windows *windowsRecord) Status() (string, error) {
+func (svc *WindowsService) Status() (string, error) {
 	m, err := mgr.Connect()
 	if err != nil {
 		return "Getting status:" + failed, getWindowsError(err)
 	}
 	defer m.Disconnect()
-	s, err := m.OpenService(windows.name)
+	s, err := m.OpenService(svc.name)
 	if err != nil {
 		return "Getting status:" + failed, getWindowsError(err)
 	}
@@ -278,7 +281,7 @@ type serviceHandler struct {
 	executable Executable
 }
 
-func (sh *serviceHandler) Execute(args []string, r <-chan svc.ChangeRequest, changes chan <- svc.Status) (ssec bool, errno uint32) {
+func (sh *serviceHandler) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
 	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPauseAndContinue
 	changes <- svc.Status{State: svc.StartPending}
 
@@ -289,7 +292,7 @@ func (sh *serviceHandler) Execute(args []string, r <-chan svc.ChangeRequest, cha
 	sh.executable.Start()
 	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
 
-	loop:
+loop:
 	for {
 		select {
 		case <-tick:
@@ -319,17 +322,17 @@ func (sh *serviceHandler) Execute(args []string, r <-chan svc.ChangeRequest, cha
 	return
 }
 
-func (windows *windowsRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + windows.description + ":"
+func (svc *WindowsService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
 
 	interactive, err := svc.IsAnInteractiveSession()
 	if err != nil {
 		return runAction + failed, getWindowsError(err)
 	}
 	if !interactive {
-		// service called from windows service manager
-		// use API provided by golang.org/x/sys/windows
-		err = svc.Run(windows.name, &serviceHandler{
+		// service called from svc service manager
+		// use API provided by golang.org/x/sys/svc
+		err = svc.Run(svc.name, &serviceHandler{
 			executable: e,
 		})
 		if err != nil {
@@ -341,14 +344,4 @@ func (windows *windowsRecord) Run(e Executable) (string, error) {
 	}
 
 	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *windowsRecord) GetTemplate() string {
-	return ""
-}
-
-// SetTemplate - sets service config template
-func (linux *windowsRecord) SetTemplate(tplStr string) error {
-	return errors.New(fmt.Sprintf("templating is not supported for windows"))
 }

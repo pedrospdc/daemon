@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 package daemon
 
 import (
@@ -12,22 +8,30 @@ import (
 	"text/template"
 )
 
-// systemVRecord - standard record (struct) for linux systemV version of daemon package
-type systemVRecord struct {
-	name         string
-	description  string
-	dependencies []string
+type SystemvService struct {
+	ServiceProperties
+}
+
+// GetTemplate - gets service config template
+func (svc *SystemvService) GetTemplate() string {
+	return systemVConfig
+}
+
+// SetTemplate - sets service config template
+func (svc *SystemvService) SetTemplate(tplStr string) error {
+	systemVConfig = tplStr
+	return nil
 }
 
 // Standard service path for systemV daemons
-func (linux *systemVRecord) servicePath() string {
-	return "/etc/init.d/" + linux.name
+func (svc *SystemvService) servicePath() string {
+	return "/etc/init.d/" + svc.name
 }
 
 // Is a service installed
-func (linux *systemVRecord) isInstalled() bool {
+func (svc *SystemvService) isInstalled() bool {
 
-	if _, err := os.Stat(linux.servicePath()); err == nil {
+	if _, err := os.Stat(svc.servicePath()); err == nil {
 		return true
 	}
 
@@ -35,10 +39,10 @@ func (linux *systemVRecord) isInstalled() bool {
 }
 
 // Check service is running
-func (linux *systemVRecord) checkRunning() (string, bool) {
-	output, err := exec.Command("service", linux.name, "status").Output()
+func (svc *SystemvService) checkRunning() (string, bool) {
+	output, err := exec.Command("service", svc.name, "status").Output()
 	if err == nil {
-		if matched, err := regexp.MatchString(linux.name, string(output)); err == nil && matched {
+		if matched, err := regexp.MatchString(svc.name, string(output)); err == nil && matched {
 			reg := regexp.MustCompile("pid  ([0-9]+)")
 			data := reg.FindStringSubmatch(string(output))
 			if len(data) > 1 {
@@ -52,16 +56,16 @@ func (linux *systemVRecord) checkRunning() (string, bool) {
 }
 
 // Install the service
-func (linux *systemVRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + linux.description + ":"
+func (svc *SystemvService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return installAction + failed, err
 	}
 
-	srvPath := linux.servicePath()
+	srvPath := svc.servicePath()
 
-	if linux.isInstalled() {
+	if svc.isInstalled() {
 		return installAction + failed, ErrAlreadyInstalled
 	}
 
@@ -71,7 +75,7 @@ func (linux *systemVRecord) Install(args ...string) (string, error) {
 	}
 	defer file.Close()
 
-	execPatch, err := executablePath(linux.name)
+	execPatch, err := executablePath(&svc.ServiceProperties)
 	if err != nil {
 		return installAction + failed, err
 	}
@@ -85,7 +89,7 @@ func (linux *systemVRecord) Install(args ...string) (string, error) {
 		file,
 		&struct {
 			Name, Description, Path, Args string
-		}{linux.name, linux.description, execPatch, strings.Join(args, " ")},
+		}{svc.name, svc.description, execPatch, strings.Join(args, " ")},
 	); err != nil {
 		return installAction + failed, err
 	}
@@ -95,12 +99,12 @@ func (linux *systemVRecord) Install(args ...string) (string, error) {
 	}
 
 	for _, i := range [...]string{"2", "3", "4", "5"} {
-		if err := os.Symlink(srvPath, "/etc/rc"+i+".d/S87"+linux.name); err != nil {
+		if err := os.Symlink(srvPath, "/etc/rc"+i+".d/S87"+svc.name); err != nil {
 			continue
 		}
 	}
 	for _, i := range [...]string{"0", "1", "6"} {
-		if err := os.Symlink(srvPath, "/etc/rc"+i+".d/K17"+linux.name); err != nil {
+		if err := os.Symlink(srvPath, "/etc/rc"+i+".d/K17"+svc.name); err != nil {
 			continue
 		}
 	}
@@ -109,28 +113,28 @@ func (linux *systemVRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (linux *systemVRecord) Remove() (string, error) {
-	removeAction := "Removing " + linux.description + ":"
+func (svc *SystemvService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return removeAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return removeAction + failed, ErrNotInstalled
 	}
 
-	if err := os.Remove(linux.servicePath()); err != nil {
+	if err := os.Remove(svc.servicePath()); err != nil {
 		return removeAction + failed, err
 	}
 
 	for _, i := range [...]string{"2", "3", "4", "5"} {
-		if err := os.Remove("/etc/rc" + i + ".d/S87" + linux.name); err != nil {
+		if err := os.Remove("/etc/rc" + i + ".d/S87" + svc.name); err != nil {
 			continue
 		}
 	}
 	for _, i := range [...]string{"0", "1", "6"} {
-		if err := os.Remove("/etc/rc" + i + ".d/K17" + linux.name); err != nil {
+		if err := os.Remove("/etc/rc" + i + ".d/K17" + svc.name); err != nil {
 			continue
 		}
 	}
@@ -139,22 +143,22 @@ func (linux *systemVRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (linux *systemVRecord) Start() (string, error) {
-	startAction := "Starting " + linux.description + ":"
+func (svc *SystemvService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return startAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return startAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); ok {
+	if _, ok := svc.checkRunning(); ok {
 		return startAction + failed, ErrAlreadyRunning
 	}
 
-	if err := exec.Command("service", linux.name, "start").Run(); err != nil {
+	if err := exec.Command("service", svc.name, "start").Run(); err != nil {
 		return startAction + failed, err
 	}
 
@@ -162,22 +166,22 @@ func (linux *systemVRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (linux *systemVRecord) Stop() (string, error) {
-	stopAction := "Stopping " + linux.description + ":"
+func (svc *SystemvService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return stopAction + failed, err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return stopAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := linux.checkRunning(); !ok {
+	if _, ok := svc.checkRunning(); !ok {
 		return stopAction + failed, ErrAlreadyStopped
 	}
 
-	if err := exec.Command("service", linux.name, "stop").Run(); err != nil {
+	if err := exec.Command("service", svc.name, "stop").Run(); err != nil {
 		return stopAction + failed, err
 	}
 
@@ -185,37 +189,26 @@ func (linux *systemVRecord) Stop() (string, error) {
 }
 
 // Status - Get service status
-func (linux *systemVRecord) Status() (string, error) {
+func (svc *SystemvService) Status() (string, error) {
 
 	if ok, err := checkPrivileges(); !ok {
 		return "", err
 	}
 
-	if !linux.isInstalled() {
+	if !svc.isInstalled() {
 		return "Status could not defined", ErrNotInstalled
 	}
 
-	statusAction, _ := linux.checkRunning()
+	statusAction, _ := svc.checkRunning()
 
 	return statusAction, nil
 }
 
 // Run - Run service
-func (linux *systemVRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + linux.description + ":"
+func (svc *SystemvService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
 	e.Run()
 	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *systemVRecord) GetTemplate() string {
-	return systemVConfig
-}
-
-// SetTemplate - sets service config template
-func (linux *systemVRecord) SetTemplate(tplStr string) error {
-	systemVConfig = tplStr
-	return nil
 }
 
 var systemVConfig = `#! /bin/sh

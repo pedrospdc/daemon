@@ -1,9 +1,5 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by
-// license that can be found in the LICENSE file.
-
 /*
-Package daemon 0.11.0 for use with Go (golang) services.
+Package daemon 0.12.0 for use with Go (golang) services.
 
 Package daemon provides primitives for daemonization of golang services.
 This package is not provide implementation of user daemon,
@@ -184,6 +180,13 @@ type Daemon interface {
 	Run(e Executable) (string, error)
 }
 
+type ServiceProperties struct {
+	name         string
+	description  string
+	arguments    []string
+	dependencies []string
+}
+
 // Executable interface defines controlling methods of executable service
 type Executable interface {
 	// Start - non-blocking start service
@@ -198,7 +201,9 @@ type Executable interface {
 //
 // name: name of the service
 //
+// arguments: arguments to append to executable
+//
 // description: any explanation, what is the service, its purpose
-func New(name, description string, dependencies ...string) (Daemon, error) {
-	return newDaemon(strings.Join(strings.Fields(name), "_"), description, dependencies)
+func New(name, description string, arguments []string, dependencies ...string) (Daemon, error) {
+	return newDaemon(strings.Join(strings.Fields(name), "_"), description, arguments, dependencies)
 }

@@ -11,22 +11,29 @@ import (
 	"text/template"
 )
 
-// systemVRecord - standard record (struct) for linux systemV version of daemon package
-type bsdRecord struct {
-	name         string
-	description  string
-	dependencies []string
+type DaemonService struct {
+	ServiceProperties
+}
+
+// GetTemplate - gets service config template
+func (svc *DaemonService) GetTemplate() string {
+	return bsdConfig
+}
+
+// SetTemplate - sets service config template
+func (svc *DaemonService) SetTemplate(tplStr string) error {
+	bsdConfig = tplStr
+	return nil
 }
 
 // Standard service path for systemV daemons
-func (bsd *bsdRecord) servicePath() string {
-	return "/usr/local/etc/rc.d/" + bsd.name
+func (svc *DaemonService) servicePath() string {
+	return "/usr/local/etc/rc.d/" + svc.name
 }
 
 // Is a service installed
-func (bsd *bsdRecord) isInstalled() bool {
-
-	if _, err := os.Stat(bsd.servicePath()); err == nil {
+func (svc *DaemonService) isInstalled() bool {
+	if _, err := os.Stat(svc.servicePath()); err == nil {
 		return true
 	}
 
@@ -34,7 +41,7 @@ func (bsd *bsdRecord) isInstalled() bool {
 }
 
 // Is a service is enabled
-func (bsd *bsdRecord) isEnabled() (bool, error) {
+func (svc *DaemonService) isEnabled() (bool, error) {
 	rcConf, err := os.Open("/etc/rc.conf")
 	if err != nil {
 		fmt.Println("Error opening file:", err)
@@ -42,7 +49,7 @@ func (bsd *bsdRecord) isEnabled() (bool, error) {
 	}
 	defer rcConf.Close()
 	rcData, _ := ioutil.ReadAll(rcConf)
-	r, _ := regexp.Compile(`.*` + bsd.name + `_enable="YES".*`)
+	r, _ := regexp.Compile(`.*` + svc.name + `_enable="YES".*`)
 	v := string(r.Find(rcData))
 	var chrFound, sharpFound bool
 	for _, c := range v {
@@ -57,8 +64,8 @@ func (bsd *bsdRecord) isEnabled() (bool, error) {
 	return chrFound, nil
 }
 
-func (bsd *bsdRecord) getCmd(cmd string) string {
-	if ok, err := bsd.isEnabled(); !ok || err != nil {
+func (svc *DaemonService) getCmd(cmd string) string {
+	if ok, err := svc.isEnabled(); !ok || err != nil {
 		fmt.Println("Service is not enabled, using one" + cmd + " instead")
 		cmd = "one" + cmd
 	}
@@ -67,7 +74,7 @@ func (bsd *bsdRecord) getCmd(cmd string) string {
 
 // Get the daemon properly
 func newDaemon(name, description string, dependencies []string) (Daemon, error) {
-	return &bsdRecord{name, description, dependencies}, nil
+	return &Service{name, description, dependencies}, nil
 }
 
 func execPath() (name string, err error) {
@@ -84,10 +91,10 @@ func execPath() (name string, err error) {
 }
 
 // Check service is running
-func (bsd *bsdRecord) checkRunning() (string, bool) {
-	output, err := exec.Command("service", bsd.name, bsd.getCmd("status")).Output()
+func (svc *DaemonService) checkRunning() (string, bool) {
+	output, err := exec.Command("service", svc.name, svc.getCmd("status")).Output()
 	if err == nil {
-		if matched, err := regexp.MatchString(bsd.name, string(output)); err == nil && matched {
+		if matched, err := regexp.MatchString(svc.name, string(output)); err == nil && matched {
 			reg := regexp.MustCompile("pid  ([0-9]+)")
 			data := reg.FindStringSubmatch(string(output))
 			if len(data) > 1 {
@@ -101,16 +108,16 @@ func (bsd *bsdRecord) checkRunning() (string, bool) {
 }
 
 // Install the service
-func (bsd *bsdRecord) Install(args ...string) (string, error) {
-	installAction := "Install " + bsd.description + ":"
+func (svc *DaemonService) Install(args ...string) (string, error) {
+	installAction := "Install " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return installAction + failed, err
 	}
 
-	srvPath := bsd.servicePath()
+	srvPath := svc.servicePath()
 
-	if bsd.isInstalled() {
+	if svc.isInstalled() {
 		return installAction + failed, ErrAlreadyInstalled
 	}
 
@@ -120,7 +127,7 @@ func (bsd *bsdRecord) Install(args ...string) (string, error) {
 	}
 	defer file.Close()
 
-	execPatch, err := executablePath(bsd.name)
+	execPatch, err := executablePath(&svc.ServiceProperties)
 	if err != nil {
 		return installAction + failed, err
 	}
@@ -134,7 +141,7 @@ func (bsd *bsdRecord) Install(args ...string) (string, error) {
 		file,
 		&struct {
 			Name, Description, Path, Args string
-		}{bsd.name, bsd.description, execPatch, strings.Join(args, " ")},
+		}{svc.name, svc.description, execPatch, strings.Join(args, " ")},
 	); err != nil {
 		return installAction + failed, err
 	}
@@ -147,18 +154,18 @@ func (bsd *bsdRecord) Install(args ...string) (string, error) {
 }
 
 // Remove the service
-func (bsd *bsdRecord) Remove() (string, error) {
-	removeAction := "Removing " + bsd.description + ":"
+func (svc *DaemonService) Remove() (string, error) {
+	removeAction := "Removing " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return removeAction + failed, err
 	}
 
-	if !bsd.isInstalled() {
+	if !svc.isInstalled() {
 		return removeAction + failed, ErrNotInstalled
 	}
 
-	if err := os.Remove(bsd.servicePath()); err != nil {
+	if err := os.Remove(svc.servicePath()); err != nil {
 		return removeAction + failed, err
 	}
 
@@ -166,22 +173,22 @@ func (bsd *bsdRecord) Remove() (string, error) {
 }
 
 // Start the service
-func (bsd *bsdRecord) Start() (string, error) {
-	startAction := "Starting " + bsd.description + ":"
+func (svc *DaemonService) Start() (string, error) {
+	startAction := "Starting " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return startAction + failed, err
 	}
 
-	if !bsd.isInstalled() {
+	if !svc.isInstalled() {
 		return startAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := bsd.checkRunning(); ok {
+	if _, ok := svc.checkRunning(); ok {
 		return startAction + failed, ErrAlreadyRunning
 	}
 
-	if err := exec.Command("service", bsd.name, bsd.getCmd("start")).Run(); err != nil {
+	if err := exec.Command("service", svc.name, svc.getCmd("start")).Run(); err != nil {
 		return startAction + failed, err
 	}
 
@@ -189,22 +196,22 @@ func (bsd *bsdRecord) Start() (string, error) {
 }
 
 // Stop the service
-func (bsd *bsdRecord) Stop() (string, error) {
-	stopAction := "Stopping " + bsd.description + ":"
+func (svc *DaemonService) Stop() (string, error) {
+	stopAction := "Stopping " + svc.description + ":"
 
 	if ok, err := checkPrivileges(); !ok {
 		return stopAction + failed, err
 	}
 
-	if !bsd.isInstalled() {
+	if !svc.isInstalled() {
 		return stopAction + failed, ErrNotInstalled
 	}
 
-	if _, ok := bsd.checkRunning(); !ok {
+	if _, ok := svc.checkRunning(); !ok {
 		return stopAction + failed, ErrAlreadyStopped
 	}
 
-	if err := exec.Command("service", bsd.name, bsd.getCmd("stop")).Run(); err != nil {
+	if err := exec.Command("service", svc.name, svc.getCmd("stop")).Run(); err != nil {
 		return stopAction + failed, err
 	}
 
@@ -212,37 +219,26 @@ func (bsd *bsdRecord) Stop() (string, error) {
 }
 
 // Status - Get service status
-func (bsd *bsdRecord) Status() (string, error) {
+func (svc *DaemonService) Status() (string, error) {
 
 	if ok, err := checkPrivileges(); !ok {
 		return "", err
 	}
 
-	if !bsd.isInstalled() {
+	if !svc.isInstalled() {
 		return "Status could not defined", ErrNotInstalled
 	}
 
-	statusAction, _ := bsd.checkRunning()
+	statusAction, _ := svc.checkRunning()
 
 	return statusAction, nil
 }
 
 // Run - Run service
-func (bsd *bsdRecord) Run(e Executable) (string, error) {
-	runAction := "Running " + bsd.description + ":"
+func (svc *DaemonService) Run(e Executable) (string, error) {
+	runAction := "Running " + svc.description + ":"
 	e.Run()
 	return runAction + " completed.", nil
-}
-
-// GetTemplate - gets service config template
-func (linux *bsdRecord) GetTemplate() string {
-	return bsdConfig
-}
-
-// SetTemplate - sets service config template
-func (linux *bsdRecord) SetTemplate(tplStr string) error {
-	bsdConfig = tplStr
-	return nil
 }
 
 var bsdConfig = `#!/bin/sh
